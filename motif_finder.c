@@ -6,6 +6,8 @@
 #include <time.h>
 
 static void generate_profile(int, int*, int**, char**, int);
+static void remove_from_profile(int, int*, int**, char**);
+static void add_to_profile(int, int*, int**, char**);
 static int profile_score(int**);
 
 
@@ -112,8 +114,13 @@ int main(int argc, char** argv) {
     for(int i = 0; i < totalSequences; i++) {
     	startIndices[i] = rand() % (strlen(sequences[i])-k);
     }
+    //just testing from here out
     int sequenceToSkip = 0;
     generate_profile(sequenceToSkip, startIndices, profile, sequences, totalSequences);
+    profile_score(profile);
+    printf("\n");
+    remove_from_profile(1, startIndices, profile, sequences);
+    add_to_profile(1, startIndices, profile, sequences);
     profile_score(profile);
 
 
@@ -144,6 +151,56 @@ static void generate_profile(int sequenceToSkip, int* startIndices, int** profil
 	    				break;
 				}
 			}
+		}
+	}
+}
+
+//This should only be called if the profile doesn't include information from the sequenceToAdd
+static void add_to_profile(int sequenceToAdd, int* startIndices, int** profile, char** allSequences) {
+	for(int i = 0; i < k; i++) {
+		char currChar = allSequences[sequenceToAdd][i+startIndices[sequenceToAdd]];
+		switch(currChar) {
+			case 'A':
+				profile[0][i+1]++;
+				profile[0][0]++;
+				break;
+			case 'C':
+				profile[1][i+1]++;
+				profile[1][0]++;
+				break;
+			case 'G':
+				profile[2][i+1]++;
+				profile[2][0]++;
+				break;
+			case 'T':
+				profile[3][i+1]++;
+				profile[3][0]++;
+				break;
+		}
+	}
+}
+
+//This should only be called if the profile already includes information from the sequenceToRemove
+static void remove_from_profile(int sequenceToRemove, int* startIndices, int** profile, char** allSequences) {
+	for(int i = 0; i < k; i++) {
+		char currChar = allSequences[sequenceToRemove][i+startIndices[sequenceToRemove]];
+		switch(currChar) {
+			case 'A':
+				profile[0][i+1]--;
+				profile[0][0]--;
+				break;
+			case 'C':
+				profile[1][i+1]--;
+				profile[1][0]--;
+				break;
+			case 'G':
+				profile[2][i+1]--;
+				profile[2][0]--;
+				break;
+			case 'T':
+				profile[3][i+1]--;
+				profile[3][0]--;
+				break;
 		}
 	}
 }
