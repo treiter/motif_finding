@@ -135,6 +135,8 @@ int main(int argc, char** argv) {
     remove_from_profile(1, startIndices, profile, sequences);
     add_to_profile(1, startIndices, profile, sequences);
     int dontCares[(d==0)?1:d];//kind of hacky to avoid errors
+    int* bestDontCares = malloc(((d==0)?1:d)*sizeof(int));
+    double bestLogScore = 0;
     double logScore = profile_score(profile, totalSequences, freqs, dontCares);
     printf("Score: %lf\n", logScore);
     printf("Dont cares:");
@@ -143,9 +145,18 @@ int main(int argc, char** argv) {
     }
     printf("\n");
 
+    //main loop goes something like while(end_condition)
+    //  for(each sequence)
+    //      align sequence with existing profile for best score
+    //          ex: check each possible start index, compare score to bestScore
+    //              keep track of "best" dontcares as well (so we dont lose that info)
+
+
 
     return 0;
 }
+
+
 
 static void generate_profile(int sequenceToSkip, int* startIndices, int** profile, char** allSequences, int numSequences) {
 	for(int i = 0; i < numSequences; i++) {
