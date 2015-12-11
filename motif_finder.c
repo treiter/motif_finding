@@ -4,15 +4,17 @@
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
+#include <limits.h>
+#include <math.h>
 
 static void generate_profile(int, int*, int**, char**, int);
 static void remove_from_profile(int, int*, int**, char**);
 static void add_to_profile(int, int*, int**, char**);
-static int profile_score(int**);
+static double profile_score(int**, int, double*, int*);
 
 
 int k = 6;
-int d = 0;
+int d = 2;
 int t = 2;
 
 int main(int argc, char** argv) {
@@ -101,7 +103,19 @@ int main(int argc, char** argv) {
     		}
     	}
     }
-    printf("A: %d, C: %d, G: %d, T: %d, total: %d\n", a_count, c_count, g_count, t_count, (int)total_count);
+    //only calculate this once
+    double a_freq = a_count/total_count;
+    double c_freq = c_count/total_count;
+    double g_freq = g_count/total_count;
+    double t_freq = t_count/total_count;
+    double freqs[4];
+    freqs[0] = a_freq;
+    freqs[1] = c_freq;
+    freqs[2] = g_freq;
+    freqs[3] = t_freq;
+
+    // printf("A: %d, C: %d, G: %d, T: %d, total: %d\n", a_count, c_count, g_count, t_count, (int)total_count);
+    // printf("A: %lf, C: %lf, G: %lf, T: %lf\n", a_freq, c_freq, g_freq, t_freq);
     //initialize our profile matrix
     int* profile[4];
     for(int i = 0; i < 4; i++) {
@@ -117,11 +131,17 @@ int main(int argc, char** argv) {
     //just testing from here out
     int sequenceToSkip = 0;
     generate_profile(sequenceToSkip, startIndices, profile, sequences, totalSequences);
-    profile_score(profile);
-    printf("\n");
+    //following 2 lines are for testing
     remove_from_profile(1, startIndices, profile, sequences);
     add_to_profile(1, startIndices, profile, sequences);
-    profile_score(profile);
+    int dontCares[(d==0)?1:d];//kind of hacky to avoid errors
+    double logScore = profile_score(profile, totalSequences, freqs, dontCares);
+    printf("Score: %lf\n", logScore);
+    printf("Dont cares:");
+    for(int i = 0; i < d; i++) {
+        printf(" %d", dontCares[i]);
+    }
+    printf("\n");
 
 
     return 0;
@@ -206,7 +226,47 @@ static void remove_from_profile(int sequenceToRemove, int* startIndices, int** p
 }
 
 
-static int profile_score(int** profile) {
+static double profile_score(int** profile, int numSequences, double* freqs, int* dontCares) {
+    double totalScore = 1;
+    double scoreArray[k];
+    double numSequencesAsDouble = (double)numSequences;
+    for(int i = 0; i < k; i++) {
+        int biggestChar = 0;
+        if(profile[1][i+1] > profile[biggestChar][i+1]) {
+            biggestChar = 1;
+        }
+        if(profile[2][i+1] > profile[biggestChar][i+1]) {
+            biggestChar = 2;
+        }
+        if(profile[3][i+1] > profile[biggestChar][i+1]) {
+            biggestChar = 3;
+        }
+        double piProb = profile[biggestChar][i+1]/numSequencesAsDouble;
+        double totalProb = piProb/freqs[biggestChar];//maybe want the max of this, not of charColumnCount
+        totalScore *= totalProb;
+        scoreArray[i] = totalProb;
+        printf("%lf\n", totalProb);
+    }
+    //figure out don't cares
+    for(int i = 0; i < d; i++) {
+        //get the minimum score in the array
+        double minScore = INT_MAX;
+        //dont include the edges
+        for(int j = 1; j < k-1; j++) {
+            if(scoreArray[j] < minScore) {
+                printf("%d, %d\n", i, j);
+                minScore = scoreArray[j];
+                dontCares[i] = j;
+            }
+        }
+        //remove the don't cares from the score
+        totalScore /= scoreArray[dontCares[i]];
+        //don't consider this in the future
+        scoreArray[dontCares[i]] = INT_MAX;
+    }
+
+
+
 	//JUST PRINTS OUT MATRIX
 	for(int i = 0; i < 4; i++) {
 		switch(i) {
@@ -231,5 +291,5 @@ static int profile_score(int** profile) {
 
 
 	//TODO: score matrix.
-	return -1;
+	return log2(totalScore);
 }
