@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS= -std=c99 -Wall -lm
+CFLAGS= -std=c99 -Wall -lm -DTRACE -D_BSD_SOURCE -g -O0
 
 all: motif_finder.c
 	$(CC) $(CFLAGS) -o motif_finder motif_finder.c
