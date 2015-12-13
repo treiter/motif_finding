@@ -9,28 +9,27 @@
 #include <sys/time.h>
 #include <stdbool.h>
 
-static void generate_profile(int, int*, int**, char**, int);
+//helper functions
+static void generate_profile(int*, int**, char**, int);
 static void remove_from_profile(int, int*, int**, char**);
 static void add_to_profile(int, int*, int**, char**);
 static double profile_score(int**, int, double*, int*);
 static bool isValInArray(int, int*);
 
-
+//default global values
 int k = 6;
 int d = 0;
 int t = 2;
 
 int main(int argc, char** argv) {
-
-    //Set up defaults
-
+    //structs used for timing
     struct timeval tval_before, tval_after, tval_result;
     gettimeofday(&tval_before, NULL);
 
     FILE * fp;
 
     int option = 0;
-
+    //parse arguments
     while((option = getopt(argc, argv, "k:d:t:")) != -1) {
         switch(option) {
             case 'k': 
@@ -72,18 +71,23 @@ int main(int argc, char** argv) {
     	if(line[0] == '>') {
     		sscanf(line, ">Sequence%d length %d", &sequenceNum, &sequenceLength);
     		sequenceNum--; //keep 0 indexed
-    		char* temp  = malloc((sequenceLength+1)*sizeof(char));
+            //note: sequenceLength is multiplied by 2, because it seemed that some of the "lengths" were off in the file
+    		char* temp  = malloc((sequenceLength*2)*sizeof(char));
             if(temp == NULL) {
                 return -1;
             }
             sequences[sequenceNum] = temp;
     		beginningOfSequence = 1;
+        //read the line (if its the start of a sequence)
     	} else if(beginningOfSequence) {
     		strcpy(sequences[sequenceNum], line);
     		beginningOfSequence = 0;
+        //otherwise append it to the current sequences
     	} else {
     		strcat(sequences[sequenceNum], line);
     	}
+        //clear line (to be safe)
+        memset(line, 0, 80*sizeof(char));
     }
     fclose(fp);
 
@@ -123,8 +127,6 @@ int main(int argc, char** argv) {
     freqs[2] = g_freq;
     freqs[3] = t_freq;
 
-    // printf("A: %d, C: %d, G: %d, T: %d, total: %d\n", a_count, c_count, g_count, t_count, (int)total_count);
-    // printf("A: %lf, C: %lf, G: %lf, T: %lf\n", a_freq, c_freq, g_freq, t_freq);
     //initialize our profile matrix
     int* profile[4];
     for(int i = 0; i < 4; i++) {
@@ -132,38 +134,24 @@ int main(int argc, char** argv) {
     	memset(profile[i], 0, (k+1)*sizeof(int));
     }
 
+    //pick random starting locations
     int startIndices[totalSequences];
     srand(time(NULL));
     for(int i = 0; i < totalSequences; i++) {
     	startIndices[i] = rand() % (strlen(sequences[i])-k);
     }
-    //just testing from here out
-    int sequenceToSkip = -1;
-    generate_profile(sequenceToSkip, startIndices, profile, sequences, totalSequences);
-    //following 2 lines are for testing
-    remove_from_profile(1, startIndices, profile, sequences);
-    add_to_profile(1, startIndices, profile, sequences);
-    int dontCares[(d==0)?1:d];//kind of hacky to avoid errors
+    generate_profile(startIndices, profile, sequences, totalSequences);
+    //kind of hacky to avoid errors when d == 0
+    int* dontCares = malloc(((d==0)?1:d)*sizeof(int));
     int* bestDontCares = malloc(((d==0)?1:d)*sizeof(int));
+    //grab the inital score
     double logScore = profile_score(profile, totalSequences, freqs, dontCares);
     double bestLogScore = logScore;
-    // printf("Score: %lf\n", logScore);
-    // printf("Dont cares:");
-    // for(int i = 0; i < d; i++) {
-    //     printf(" %d", dontCares[i]);
-    // }
-    // printf("\n");
-
+    //more timing
     gettimeofday(&tval_after, NULL);
     timersub(&tval_after, &tval_before, &tval_result);
-    //main loop goes something like while(end_condition)
-    //  for(each sequence)
-    //      align sequence with existing profile for best score
-    //          ex: check each possible start index, compare score to bestScore
-    //              keep track of "best" dontcares as well (so we dont lose that info)
 
     //proceed until we're out of time
-    //TODO: adjust this condition
     while(tval_result.tv_sec < t) {
         //for each sequence
         for(int i = 0; i < totalSequences; i++) {
@@ -176,16 +164,19 @@ int main(int argc, char** argv) {
                     startIndices[i] = j;
                     add_to_profile(i, startIndices, profile, sequences);
                     logScore = profile_score(profile, totalSequences, freqs, dontCares);
+                    //keep track of the best score so far
                     if(logScore > bestLogScore) {
                         currBestStart = j;
                         bestLogScore = logScore;
-                        bestDontCares = dontCares;
+                        memcpy(bestDontCares, dontCares, d*sizeof(int));
                     }
                     remove_from_profile(i, startIndices, profile, sequences);
                 }
             }
+            //reset profile with the best new starting index for sequences i
             startIndices[i] = currBestStart;
             add_to_profile(i, startIndices, profile, sequences);
+            //check if we're out of time yet
             gettimeofday(&tval_after, NULL);
             timersub(&tval_after, &tval_before, &tval_result);
             if(tval_result.tv_sec >= t) {
@@ -193,6 +184,7 @@ int main(int argc, char** argv) {
             }
         }
     }
+    //done with algorithm, now just print stuff
     //figure out the motif
     char* motif = (char*)malloc((k+1)*sizeof(char));
     if(motif == NULL) {
@@ -218,12 +210,23 @@ int main(int argc, char** argv) {
             motif[i] = 'T';
         }
     }
+    //print results
     motif[k] = '\0';
-    printf("Ran out of time. Log likelihood: %lf, motif: %s\n", bestLogScore, motif);
-    printf("Total time taken: %ld.%06ld\n", (long int)tval_result.tv_sec, (long int)tval_result.tv_usec);
+    printf("Best motif of length %d with %d don't cares is %s\n", k, d, motif);
+    printf("Log likelihood is %lf\n", bestLogScore);
+    printf("Loci of the best motif are here:\n");
+
     for(int i = 0; i < totalSequences; i++) {
-        printf("Position of motif: %d\n", startIndices[i]);
+        printf("%d\n", startIndices[i]);
+        free(sequences[i]);
     }
+    //clean up heap
+    for(int i = 0; i < 4; i++) {
+        free(profile[i]);
+    }
+    free(dontCares);
+    free(bestDontCares);
+    free(motif);
     return 0;
 }
 
@@ -236,31 +239,30 @@ static bool isValInArray(int val, int* array) {
     return false;
 }
 
-static void generate_profile(int sequenceToSkip, int* startIndices, int** profile, char** allSequences, int numSequences) {
+static void generate_profile(int* startIndices, int** profile, char** allSequences, int numSequences) {
 	for(int i = 0; i < numSequences; i++) {
-		if(i != sequenceToSkip) {
-			for(int j = 0; j < k; j++) {
-				char currChar = allSequences[i][j+startIndices[i]];
-				switch(currChar) {
-					case 'A':
-	    				profile[0][j+1]++;
-	    				profile[0][0]++;
-	    				break;
-	    			case 'C':
-	    				profile[1][j+1]++;
-	    				profile[1][0]++;
-	    				break;
-	    			case 'G':
-	    				profile[2][j+1]++;
-	    				profile[2][0]++;
-	    				break;
-	    			case 'T':
-	    				profile[3][j+1]++;
-	    				profile[3][0]++;
-	    				break;
-				}
+		for(int j = 0; j < k; j++) {
+			char currChar = allSequences[i][j+startIndices[i]];
+			switch(currChar) {
+				case 'A':
+    				profile[0][j+1]++;
+    				profile[0][0]++;
+    				break;
+    			case 'C':
+    				profile[1][j+1]++;
+    				profile[1][0]++;
+    				break;
+    			case 'G':
+    				profile[2][j+1]++;
+    				profile[2][0]++;
+    				break;
+    			case 'T':
+    				profile[3][j+1]++;
+    				profile[3][0]++;
+    				break;
 			}
 		}
+		
 	}
 }
 
@@ -320,21 +322,22 @@ static double profile_score(int** profile, int numSequences, double* freqs, int*
     double scoreArray[k];
     double numSequencesAsDouble = (double)numSequences;
     for(int i = 0; i < k; i++) {
-        int biggestChar = 0;
-        if(profile[1][i+1] > profile[biggestChar][i+1]) {
-            biggestChar = 1;
+        double bestTotalProb = profile[0][i+1]/numSequencesAsDouble;
+        bestTotalProb /= freqs[0];
+        double prob1 = profile[1][i+1]/numSequencesAsDouble/freqs[1];
+        double prob2 = profile[2][i+2]/numSequencesAsDouble/freqs[2];
+        double prob3 = profile[3][i+3]/numSequencesAsDouble/freqs[3];
+        if(prob1 > bestTotalProb) {
+            bestTotalProb = prob1;
         }
-        if(profile[2][i+1] > profile[biggestChar][i+1]) {
-            biggestChar = 2;
+        if(prob2 > bestTotalProb) {
+            bestTotalProb = prob2;
         }
-        if(profile[3][i+1] > profile[biggestChar][i+1]) {
-            biggestChar = 3;
+        if(prob3 > bestTotalProb) {
+            bestTotalProb = prob3;
         }
-        double piProb = profile[biggestChar][i+1]/numSequencesAsDouble;
-        double totalProb = piProb/freqs[biggestChar];//maybe want the max of this, not of charColumnCount
-        totalScore *= totalProb;
-        scoreArray[i] = totalProb;
-        //printf("%lf\n", totalProb);
+        totalScore *= bestTotalProb;
+        scoreArray[i] = bestTotalProb;
     }
     //figure out don't cares
     for(int i = 0; i < d; i++) {
@@ -343,7 +346,6 @@ static double profile_score(int** profile, int numSequences, double* freqs, int*
         //dont include the edges
         for(int j = 1; j < k-1; j++) {
             if(scoreArray[j] < minScore) {
-                //printf("%d, %d\n", i, j);
                 minScore = scoreArray[j];
                 dontCares[i] = j;
             }
@@ -353,32 +355,5 @@ static double profile_score(int** profile, int numSequences, double* freqs, int*
         //don't consider this in the future
         scoreArray[dontCares[i]] = INT_MAX;
     }
-
-
-
-	//JUST PRINTS OUT MATRIX
-	// for(int i = 0; i < 4; i++) {
-	// 	switch(i) {
-	// 		case 0:
-	// 			printf("A:\t");
-	// 			break;
-	// 		case 1:
-	// 			printf("C:\t");
-	// 			break;
-	// 		case 2:
-	// 			printf("G:\t");
-	// 			break;
-	// 		case 3:
-	// 			printf("T:\t");
-	// 			break;
-	// 	}
-	// 	for(int j = 0; j < k+1; j++) {
-	// 		printf("%d\t", profile[i][j]);
-	// 	}
-	// 	printf("\n");
-	// }
-
-
-	//TODO: score matrix.
 	return log2(totalScore);
 }
